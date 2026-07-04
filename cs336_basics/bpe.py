@@ -1,10 +1,11 @@
 import regex as re  # type: ignore
+import os
 from collections import Counter, defaultdict
 from multiprocessing import Pool
-from pretokenization import find_chunk_boundaries
+from cs336_basics.pretokenization import find_chunk_boundaries
 
 
-def generate_word_count(input_path: str, start: int, end: int, special_tokens: list[str]) -> Counter[str]:
+def generate_word_count(input_path: str | os.PathLike, start: int, end: int, special_tokens: list[str]) -> Counter[str]:
     """
     Read a spefic chunk form file
     split chunk with special_tokens (to drop special_tokens)
@@ -61,7 +62,7 @@ def merge_pair(tokens: list[int], pair: tuple[int, int], new_token: int) -> list
 
 
 def train_bpe(
-    input_path: str, vocab_size: int, special_tokens: list[str]
+    input_path: str | os.PathLike, vocab_size: int, special_tokens: list[str]
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     """
     Train a bpe tokenizer to obtain a vocabulary and merge list from input text
@@ -118,13 +119,13 @@ def train_bpe(
         vocab[new_token] = vocab[merge[0]] + vocab[merge[1]]
         merges.append((vocab[merge[0]], vocab[merge[1]]))
 
-        for word in embed[merge]:
+        for word in list(embed[merge]):
             # reverse the contribution of word containing merge
             tokens = tokenize[word]
             for pair in zip(tokens, tokens[1:]):
                 pair_count[pair] -= word_count[word]
                 embed[pair].discard(word)
-                if embed[pair] == {}:
+                if not embed[pair]:
                     embed.pop(pair, None)
 
             # merge pair and uppdate tokenize[word]
