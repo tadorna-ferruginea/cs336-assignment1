@@ -1,5 +1,8 @@
 # CS336 Spring 2025 Assignment 1: Basics
 
+check my makefile for running on testset
+
+## original:
 For a full description of the assignment, see the assignment handout at
 [cs336_assignment1_basics.pdf](./cs336_assignment1_basics.pdf)
 
