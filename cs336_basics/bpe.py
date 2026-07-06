@@ -3,6 +3,7 @@ import os
 from collections import Counter, defaultdict
 from multiprocessing import Pool
 from cs336_basics.pretokenization import find_chunk_boundaries
+from cs336_basics.max_heap import max_heapify, max_heap_pop, max_heap_push
 
 
 def generate_word_count(input_path: str | os.PathLike, start: int, end: int, special_tokens: list[str]) -> Counter[str]:
@@ -18,8 +19,11 @@ def generate_word_count(input_path: str | os.PathLike, start: int, end: int, spe
         chunk = f.read(end - start).decode("utf-8", errors="ignore")
 
     # first use special_tokens to split the chunk
-    split_pattern = "|".join(re.escape(x) for x in special_tokens)
-    sentences = re.split(split_pattern, chunk)
+    if special_tokens:
+        split_pattern = "|".join(re.escape(x) for x in special_tokens)
+        sentences = re.split(split_pattern, chunk)
+    else:
+        sentences = [chunk]
 
     # PAT is the pre-tokenizing pattern from GPT-2
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -104,6 +108,10 @@ def train_bpe(
             pair_count[pair] += word_count[word]
             embed[pair].add(word)
 
+    # initialize the pair_heap
+    pair_heap = [(pair_count[pair], vocab[pair[0]], vocab[pair[1]], pair) for pair in pair_count]
+    max_heapify(pair_heap)
+
     # merge and update vocab, merges, tokenize, pair_count, embed
     # until reached designed vocab_size or no more pairs
     merges = []
@@ -113,7 +121,13 @@ def train_bpe(
             break
 
         # lexicographic ordering is applied at the max comparing to break tie
-        merge = max(pair_count, key=lambda x: (pair_count[x], vocab[x[0]], vocab[x[1]]))
+        # merge = max(pair_count, key=lambda x: (pair_count[x], vocab[x[0]], vocab[x[1]]))
+        # use heap instead
+
+        merge = max_heap_pop(pair_heap)
+        while pair_count[merge[3]] != merge[0]:
+            merge = max_heap_pop(pair_heap)
+        merge = merge[3]
 
         new_token = len(vocab)
         vocab[new_token] = vocab[merge[0]] + vocab[merge[1]]
@@ -122,8 +136,9 @@ def train_bpe(
         for word in list(embed[merge]):
             # reverse the contribution of word containing merge
             tokens = tokenize[word]
+            pre_count = Counter()
             for pair in zip(tokens, tokens[1:]):
-                pair_count[pair] -= word_count[word]
+                pre_count[pair] -= word_count[word]
                 embed[pair].discard(word)
                 if not embed[pair]:
                     embed.pop(pair, None)
@@ -134,9 +149,25 @@ def train_bpe(
 
             # update pair_count and embed with new tokenize[word]
             tokens = tokenize[word]
+            post_count = Counter()
             for pair in zip(tokens, tokens[1:]):
-                pair_count[pair] += word_count[word]
+                post_count[pair] += word_count[word]
                 embed[pair].add(word)
+
+            # find change, update pair_count and pair_heap
+            pre_count.update(post_count)
+            for pair in pre_count:
+                if pre_count[pair]:
+                    pair_count[pair] += pre_count[pair]
+                    if not pair_count[pair]:
+                        pair_count.pop(pair)
+                    else:
+                        max_heap_push(pair_heap, (pair_count[pair], vocab[pair[0]], vocab[pair[1]], pair))
+
+            # moniter heap_size
+            if len(pair_heap) > 3 * len(pair_count):
+                pair_heap = [(pair_count[pair], vocab[pair[0]], vocab[pair[1]], pair) for pair in pair_count]
+                max_heapify(pair_heap)
 
     # append special_tokens to vocab
     for s in special_tokens:
