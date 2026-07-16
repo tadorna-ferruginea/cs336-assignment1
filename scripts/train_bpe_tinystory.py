@@ -21,7 +21,7 @@ def main():
     with open("output/ts_merges.pkl", "wb") as f:
         pickle.dump(merges, f)
 
-    with open("output/profile.txt", "w") as f:
+    with open("output/ts_profile.txt", "w") as f:
         pstats.Stats(profiler, stream=f).sort_stats("cumulative").print_stats(30)
 
     longest = max(vocab.values(), key=len)

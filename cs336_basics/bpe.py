@@ -74,7 +74,7 @@ def train_bpe(
     """
     # find chunk boundaries
     with open(input_path, "rb") as f:
-        num_chunks = 32
+        num_chunks = 128
         split_token_in_byte = b"<|endoftext|>"
         boundaries = find_chunk_boundaries(f, num_chunks, split_token_in_byte)
 
