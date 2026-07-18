@@ -1,7 +1,6 @@
 import pickle
 import os
 import regex as re  # type: ignore
-from collections import defaultdict
 from collections.abc import Iterable, Iterator
 
 
@@ -33,9 +32,7 @@ class Tokenizer:
                 self.vocab[len(self.vocab)] = word.encode()
 
         # construct the split pattern with capture
-        self.split_pattern = (
-            "(" + "|".join(re.escape(x) for x in self.special_tokens) + ")"
-        )
+        self.split_pattern = "(" + "|".join(re.escape(x) for x in self.special_tokens) + ")"
 
         # PAT is the pre-tokenizing pattern from GPT-2
         self.PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -47,9 +44,9 @@ class Tokenizer:
         if not self.special_tokens:
             self.max_len = 0
         else:
-            self.max_len = len(self.special_tokens[0])-1
+            self.max_len = len(self.special_tokens[0]) - 1
         for token in self.special_tokens:
-            for length in range(len(token)-1):
+            for length in range(len(token)):
                 self.prefix_set.add(token[:length])
 
     @classmethod
@@ -127,8 +124,8 @@ class Tokenizer:
             if sentence in self.special_tokens:
                 result.append(self.inverse_vocab[sentence.encode()])
             else:
-                for word in (x.group() for x in re.finditer(self.PAT, sentence)):
-                    result.extend(self._tokenize(word))
+                for match in re.finditer(self.PAT, sentence):
+                    result.extend(self._tokenize(match.group()))
         return result
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
@@ -149,31 +146,57 @@ class Tokenizer:
             for split_point in range(suffix_start, len(buffer)):
                 if buffer[split_point:] in self.prefix_set:
                     break
-
-            # split y determin boundary
-            # we can't use encode directly because we need to deal with the last word
-            cumulant_length = 0
-            if not self.special_tokens:
-                sentences = [text]
             else:
-                sentences = re.split(self.split_pattern, text)
+                split_point = len(buffer)
 
-            for sentence in sentences[:-1]:
-                if sentence in self.special_tokens:
-                    yield self.inverse_vocab[sentence.encode()]
+            # split and determine boundary
+            # we can't use encode directly because we need to deal with the last word
+            # we need to split buffer as a whole and use cumulant_length and split_point to determine status
+            if not self.special_tokens:
+                sentences = [buffer]
+            else:
+                sentences = re.split(self.split_pattern, buffer)
+
+            cumulant_length = 0
+            for sentence in sentences:
+                current_length = cumulant_length + len(sentence)
+                if current_length < split_point:
+                    # normal case, free to split
+                    # one step forward
+                    cumulant_length = current_length
+                    if sentence in self.special_tokens:
+                        yield self.inverse_vocab[sentence.encode()]
+                    else:
+                        for match in re.finditer(self.PAT, sentence):
+                            yield from self._tokenize(match.group())
                 else:
-                    for word in (x.group() for x in re.finditer(self.PAT, sentence)):
-                        yield from self._tokenize(word)
-            # deal with tail: note that the last sentence will never be any special token,
-            # due to the behavior of split
-            sentence = sentences[-1]
-            word_before = None
-            for word in (x.group() for x in re.finditer(self.PAT, sentence)):
-                if word_before:
-                    yield from self._tokenize(word_before)
-                word_before = word
-            residual = 
-                    
-我直接split，把最后的组合体和prefix比长度就好了
+                    # need to determine: the current sentence is special or regular?
+                    # find residual and break
+                    if sentence in self.special_tokens:
+                        # generate residual
+                        residual = buffer[cumulant_length:]
+                    else:
+                        # word level split
+                        for match in re.finditer(self.PAT, sentence):
+                            word = match.group()
+                            current_length = cumulant_length + len(word)
+                            if current_length < split_point:
+                                cumulant_length = current_length
+                                yield from self._tokenize(word)
+                            else:
+                                residual = buffer[cumulant_length:]
+                    break
         # clean up the tail
         yield from self.encode(residual)
+
+    def decode(self, ids: list[int]) -> str:
+        """
+        decode list of tokens to string
+        """
+        # connect bytes first
+        result = []
+        for token in ids:
+            result.append(self.vocab[token])
+        # need to use b"".join()
+        text_bytes = b"".join(result)
+        return text_bytes.decode("utf-8", errors="replace")
