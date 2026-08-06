@@ -11,7 +11,7 @@ from torch import Tensor
 
 from cs336_basics.bpe import train_bpe
 from cs336_basics.tokenizer import Tokenizer
-from cs336_basics.operators import Linear, Embedding, rms_norm
+from cs336_basics.operators import Linear, Embedding, RMSNorm, SwiGLU
 
 
 def run_linear(
@@ -34,7 +34,7 @@ def run_linear(
     """
 
     layer = Linear(d_in, d_out, device=weights.device, dtype=weights.dtype)
-    layer.load_state_dict({"weights": weights})
+    layer.load_state_dict({"weight": weights})
     return layer(in_features)
 
 
@@ -58,7 +58,7 @@ def run_embedding(
     """
 
     layer = Embedding(vocab_size, d_model, device=weights.device, dtype=weights.dtype)
-    layer.load_state_dict({"weights": weights})
+    layer.load_state_dict({"weight": weights})
     return layer(token_ids)
 
 
@@ -91,7 +91,10 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+
+    layer = SwiGLU(d_model, d_ff)
+    layer.load_state_dict({"w1.weight": w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight})
+    return layer(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -387,8 +390,8 @@ def run_rmsnorm(
         RMSNorm of the `in_features`.
     """
 
-    layer = rms_norm(d_model, eps)
-    layer.load_state_dict({"amplify_weights": weights})
+    layer = RMSNorm(d_model, eps)
+    layer.load_state_dict({"weight": weights})
     return layer.forward(in_features)
 
 
