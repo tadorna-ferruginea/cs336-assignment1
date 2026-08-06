@@ -20,7 +20,7 @@ class Linear(nn.Module):
         self.out_features = out_features
 
         std = math.sqrt(2 / (in_features + out_features))
-        self.weight = nn.Parameter(
+        self.weights = nn.Parameter(
             torch.empty(
                 out_features,
                 in_features,
@@ -28,11 +28,11 @@ class Linear(nn.Module):
                 dtype=dtype,
             )
         )
-        nn.init.trunc_normal_(self.weight, mean=0.0, std=std, a=-3.0 * std, b=3.0 * std)
+        nn.init.trunc_normal_(self.weights, mean=0.0, std=std, a=-3.0 * std, b=3.0 * std)
 
     def forward(self, x: Float[Tensor, "*batch in_features"]) -> Float[Tensor, "*batch out_features"]:
 
-        return einx.dot("out_features [in_features], ... [in_features] -> ... out_features", self.weight, x)
+        return einx.dot("out_features [in_features], ... [in_features] -> ... out_features", self.weights, x)
 
 
 class Embedding(nn.Module):
@@ -47,7 +47,7 @@ class Embedding(nn.Module):
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
 
-        self.weight = nn.Parameter(
+        self.weights = nn.Parameter(
             torch.empty(
                 num_embeddings,
                 embedding_dim,
@@ -56,7 +56,34 @@ class Embedding(nn.Module):
             )
         )
 
-        nn.init.trunc_normal_(self.weight, mean=0.0, std=1.0, a=-3.0, b=3.0)
+        nn.init.trunc_normal_(self.weights, mean=0.0, std=1.0, a=-3.0, b=3.0)
 
     def forward(self, token_ids: Float[Tensor, "*batch"]) -> Float[Tensor, "*batch embedding_dim"]:
-        return self.weight[token_ids]
+        return self.weights[token_ids]
+
+
+class rms_norm(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        eps: float = 1e-5,
+        device=None,
+        dtype=None,
+    ):
+        super().__init__()
+
+        self.eps = eps
+        self.amplify_weights = nn.Parameter(
+            torch.ones(
+                d_model,
+                device=device,
+                dtype=dtype,
+            )
+        )
+
+    def forward(self, x: Float[Tensor, "*batch in_features"]) -> Float[Tensor, "*batch in_features"]:
+        in_dtype = x.dtype
+        x = x.to(torch.float32)
+        frac_x_rms = x * torch.rsqrt(einx.mean("... ([in_features])", x.pow(2)) + self.eps)
+        frac_x_rms = frac_x_rms.to(in_dtype)
+        return einx.multiply("... in_features, in_features -> ... in_features", frac_x_rms, self.amplify_weights)

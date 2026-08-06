@@ -8,11 +8,10 @@ import numpy.typing as npt
 import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
-from torch.nn import Embedding
 
 from cs336_basics.bpe import train_bpe
 from cs336_basics.tokenizer import Tokenizer
-from cs336_basics.operators import Linear
+from cs336_basics.operators import Linear, Embedding, rms_norm
 
 
 def run_linear(
@@ -35,7 +34,7 @@ def run_linear(
     """
 
     layer = Linear(d_in, d_out, device=weights.device, dtype=weights.dtype)
-    layer.load_state_dict({"weight": weights})
+    layer.load_state_dict({"weights": weights})
     return layer(in_features)
 
 
@@ -59,7 +58,7 @@ def run_embedding(
     """
 
     layer = Embedding(vocab_size, d_model, device=weights.device, dtype=weights.dtype)
-    layer.load_state_dict({"weight": weights})
+    layer.load_state_dict({"weights": weights})
     return layer(token_ids)
 
 
@@ -387,7 +386,10 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+
+    layer = rms_norm(d_model, eps)
+    layer.load_state_dict({"amplify_weights": weights})
+    return layer.forward(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
