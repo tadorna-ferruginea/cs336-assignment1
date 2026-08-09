@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 import einx
-from jaxtyping import Float
+from jaxtyping import Float, Int
 
 
 class Linear(nn.Module):
@@ -80,7 +80,7 @@ class RMSNorm(nn.Module):
             )
         )
 
-    def forward(self, x: Float[Tensor, "*batch in_features"]) -> Float[Tensor, "*batch in_features"]:
+    def forward(self, x: Float[Tensor, "*batch d"]) -> Float[Tensor, "*batch d"]:
         in_dtype = x.dtype
         x = x.to(torch.float32)
         frac_x_rms = x * torch.rsqrt(einx.mean("... ([in_features])", x.pow(2)) + self.eps)
@@ -91,8 +91,8 @@ class RMSNorm(nn.Module):
 class SwiGLU(nn.Module):
     """
     W1 goes through SiLU,
-    W2 bypass,
-    W1 W2 bind together to go through W3
+    W3 bypass,
+    W1 W3 bind together to go through W2
     """
 
     def __init__(
@@ -114,7 +114,7 @@ class SwiGLU(nn.Module):
         self.w3 = Linear(d_model, d_ff, device=device, dtype=dtype)
         self.w2 = Linear(d_ff, d_model, device=device, dtype=dtype)
 
-    def forward(self, x: Float[Tensor, "*batch in_features"]) -> Float[Tensor, "*batch out_features"]:
+    def forward(self, x: Float[Tensor, "*batch d"]) -> Float[Tensor, "*batch d"]:
         """
         1. x -w1-> x1 -SiLU-> x2
         2. x -w3-> x3
@@ -132,3 +132,48 @@ class SwiGLU(nn.Module):
         output = self.w2(x4)
 
         return output
+
+
+class RoPE(nn.Module):
+    sin_cached: Tensor
+    cos_cached: Tensor
+
+    def __init__(
+        self,
+        theta: float,
+        d_k: int,
+        max_seq_len: int,
+        device: torch.device | None = None,
+    ):
+        super().__init__()
+
+        assert d_k % 2 == 0, "d_k need to be even in RoPE"
+
+        i_seq = torch.arange(0, max_seq_len, dtype=torch.float32)
+        k_seq = torch.pow(theta, -torch.arange(0, d_k, 2, dtype=torch.float32) / d_k)
+        # get angles
+        angles = torch.outer(i_seq, k_seq)
+
+        # cache the sin and cos
+        # buffer is a dict like parameter
+        # and since this is not obtained from training
+        # we put persistent to false to avoid adding to state_dict
+        self.register_buffer("sin_cached", torch.sin(angles), persistent=False)
+        self.register_buffer("cos_cached", torch.cos(angles), persistent=False)
+
+    def forward(
+        self, x: Float[Tensor, "*batch seq_len d_k"], token_positions: Int[Tensor, "*batch seq_len"]
+    ) -> Float[Tensor, "*batch seq_len d_k"]:
+        # devide x into 2 sub lattices
+        x0_even, x0_odd = einx.id("... seq (k (1+1)) -> ... seq k, ... seq k", x)
+
+        # we notice that token_positions is a collection of all the "i"s
+        sin = einx.get_at("[i] k, ... seq -> ... seq k", self.sin_cached, token_positions)
+        cos = einx.get_at("[i] k, ... seq -> ... seq k", self.cos_cached, token_positions)
+
+        # let's rock and RoPE
+        x1_even = x0_even * cos - x0_odd * sin
+        x1_odd = x0_even * sin + x0_odd * cos
+
+        x_out = einx.id("... seq k, ... seq k -> ... seq (k (1+1))", x1_even, x1_odd)
+        return x_out

@@ -106,7 +106,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "einops", specifier = ">=0.8" },
-    { name = "einx", specifier = ">=0.4" },
+    { name = "einx", specifier = ">=0.4.3" },
     { name = "jaxtyping", specifier = ">=0.3" },
     { name = "numpy", specifier = ">=2.4" },
     { name = "psutil", specifier = ">=7" },
@@ -197,16 +197,16 @@ wheels = [
 
 [[package]]
 name = "einx"
-version = "0.4.2"
+version = "0.4.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "frozendict" },
     { name = "numpy" },
     { name = "sympy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/36/b3/2b0acbde4f763b72f65da58cea54f35386f537569c4c39f3d37de1c03710/einx-0.4.2.tar.gz", hash = "sha256:9aeea7053a4f683235e81b62383069085cc919a012748c8575f3557455377e11", size = 114546, upload-time = "2026-03-14T07:39:06.6Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/84/96/df2cfa7418b175dddcf30a88711d01b79a32c3ac4d64b379ed89a3de2c08/einx-0.4.3.tar.gz", hash = "sha256:be7d81ea1908b9f00e4a467840998fc483c33aa32aaaaa3ada6c8386f693edf9", size = 120087, upload-time = "2026-04-01T09:50:41.473Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/01/97/7afa0d833cae4d8e651b8265b7c95613199d9749a4976149b5fd66052a06/einx-0.4.2-py3-none-any.whl", hash = "sha256:c3d01878ffe34f2e038a14b98f82b4b47bba32ee2f127618ab31851e439ba2f0", size = 139917, upload-time = "2026-03-14T07:39:05.413Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/28/6768d342b2b888f9facdddbd430daf015cab936e2598281ab436b1be1b4a/einx-0.4.3-py3-none-any.whl", hash = "sha256:47ce54a0144f6dffcfacdd8fe2cc9e2e5e6485dda2471330ab75ee747dd22f39", size = 163766, upload-time = "2026-04-01T09:50:40.165Z" },
 ]
 
 [[package]]
