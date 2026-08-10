@@ -177,3 +177,10 @@ class RoPE(nn.Module):
 
         x_out = einx.id("... seq k, ... seq k -> ... seq (k (1+1))", x1_even, x1_odd)
         return x_out
+
+
+def softmax(x: Tensor, dim: int) -> Tensor:
+    e_max = x.max(dim=dim, keepdim=True).values
+    p = torch.exp(x - e_max)
+    Z = p.sum(dim=dim, keepdim=True)
+    return p / Z
