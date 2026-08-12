@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 import einx
-from jaxtyping import Float, Int
+from jaxtyping import Float, Int, Bool
 
 
 class Linear(nn.Module):
@@ -184,3 +184,30 @@ def softmax(x: Tensor, dim: int) -> Tensor:
     p = torch.exp(x - e_max)
     Z = p.sum(dim=dim, keepdim=True)
     return p / Z
+
+
+def scaled_dot_product_attention(
+    queries: Float[Tensor, "*batch seq_len d_k"],
+    keys: Float[Tensor, "*batch seq_len d_k"],
+    values: Float[Tensor, "*batch seq_len d_v"],
+    mask: Bool[Tensor, "seq_len seq_len"] | None = None,
+) -> Float[Tensor, "*batch seq_len d_k"]:
+
+    # todo:
+    # get d_k
+    # qk do inner product
+    # go through softmax <- apply mask
+    # distribute values
+    # sum up for values
+    d_k = queries.shape[-1]
+
+    links = einx.dot("... seq_pos_q [d], ... seq_pos_k [d] -> ... seq_pos_q seq_pos_k", queries, keys)
+    scaled_links = links / math.sqrt(d_k)
+    if mask is not None:
+        masked_links = torch.where(mask, 0.0, -float("inf")) + scaled_links
+    else:
+        masked_links = scaled_links
+    softmaxed_links = einx.softmax("... seq_pos_q [seq_pos_k]", masked_links)
+    output = einx.dot("... seq_pos_q [seq_pos_k], ... [seq_pos_k] d_v -> ... seq_pos_q d_v", softmaxed_links, values)
+
+    return output
