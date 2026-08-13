@@ -149,8 +149,8 @@ class RoPE(nn.Module):
 
         assert d_k % 2 == 0, "d_k need to be even in RoPE"
 
-        i_seq = torch.arange(0, max_seq_len, dtype=torch.float32)
-        k_seq = torch.pow(theta, -torch.arange(0, d_k, 2, dtype=torch.float32) / d_k)
+        i_seq = torch.arange(0, max_seq_len, device=device, dtype=torch.float32)
+        k_seq = torch.pow(theta, -torch.arange(0, d_k, 2, device=device, dtype=torch.float32) / d_k)
         # get angles
         angles = torch.outer(i_seq, k_seq)
 
@@ -211,3 +211,57 @@ def scaled_dot_product_attention(
     output = einx.dot("... seq_pos_q [seq_pos_k], ... [seq_pos_k] d_v -> ... seq_pos_q d_v", softmaxed_links, values)
 
     return output
+
+
+class CausalMHA(nn.Module):
+    """
+    we get a bundle of words as input，build causal mask, break it into heads, go through RoPE, go through attention, collect it back from heads
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        max_seq_len: int,
+        theta: float,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        super().__init__()
+
+        assert d_model % num_heads == 0, "d_model % num_heads != 0"
+
+        self.d_head = d_model // num_heads
+
+        # initialize the parameters:
+        self.W_q = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.W_k = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.W_v = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.W_o = Linear(d_model, d_model, device=device, dtype=dtype)
+
+        self.necklace = RoPE(theta, self.d_head, max_seq_len, device=device)
+
+    def forward(
+        self, x: Float[Tensor, "*batch seq_len d_model"], token_positions: Int[Tensor, "*batch seq_len"]
+    ) -> Float[Tensor, "*batch seq_len d_model"]:
+
+        seq_len = x.shape[-2]
+        # map x into heads:
+        q = einx.id("... seq (n_heads d_head) -> ... n_heads seq d_head", self.W_q(x), d_head=self.d_head)
+        k = einx.id("... seq (n_heads d_head) -> ... n_heads seq d_head", self.W_k(x), d_head=self.d_head)
+        v = einx.id("... seq (n_heads d_head) -> ... n_heads seq d_head", self.W_v(x), d_head=self.d_head)
+
+        # do RoPE at each head:
+        q = self.necklace(q, token_positions)
+        k = self.necklace(k, token_positions)
+
+        # build mask:
+        seq = torch.arange(seq_len, device=x.device, dtype=torch.int64)
+        mask = seq[:, None] >= seq[None, :]
+
+        # apply attention:
+        v_out = scaled_dot_product_attention(q, k, v, mask)
+        # reshape v_out
+        x_out = einx.id("... n_heads seq d_head -> ... seq (n_heads d_head)", v_out)
+
+        return self.W_o(x_out)
