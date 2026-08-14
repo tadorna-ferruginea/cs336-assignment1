@@ -6,21 +6,22 @@ from typing import IO, Any, BinaryIO
 
 import numpy.typing as npt
 import torch
+import einx
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
 from cs336_basics.bpe import train_bpe
 from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.operators import (
-    CausalMHA,
     Linear,
     Embedding,
     RMSNorm,
     SwiGLU,
     RoPE,
+    CausalMHA,
+    Progynova,
     scaled_dot_product_attention,
     softmax,
-    CausalMHA,
 )
 
 
@@ -201,11 +202,15 @@ def run_multihead_self_attention_with_rope(
         implementation with the given QKV projection weights and input features.
     """
     layer = CausalMHA(d_model, num_heads, max_seq_len, theta)
+    qkv_proj_weight = einx.id(
+        "d_out d_in, d_out d_in, d_out d_in -> ((1+1+1) d_out) d_in",
+        q_proj_weight,
+        k_proj_weight,
+        v_proj_weight,
+    )
     layer.load_state_dict(
         {
-            "W_q.weight": q_proj_weight,
-            "W_k.weight": k_proj_weight,
-            "W_v.weight": v_proj_weight,
+            "W_qkv.weight": qkv_proj_weight,
             "W_o.weight": o_proj_weight,
         }
     )
@@ -305,7 +310,27 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    layer = Progynova(d_model, num_heads, d_ff, max_seq_len, theta)
+    qkv_proj_weight = einx.id(
+        "d_out d_in, d_out d_in, d_out d_in -> ((1+1+1) d_out) d_in",
+        weights["attn.q_proj.weight"],
+        weights["attn.k_proj.weight"],
+        weights["attn.v_proj.weight"],
+    )
+    layer.load_state_dict(
+        {
+            "mha.W_qkv.weight": qkv_proj_weight,
+            "mha.W_o.weight": weights["attn.output_proj.weight"],
+            "rms1.weight": weights["ln1.weight"],
+            "rms2.weight": weights["ln2.weight"],
+            "ffn.w1.weight": weights["ffn.w1.weight"],
+            "ffn.w2.weight": weights["ffn.w2.weight"],
+            "ffn.w3.weight": weights["ffn.w3.weight"],
+        }
+    )
+    seq_len = in_features.shape[-2]
+    token_positions = torch.arange(seq_len, device=in_features.device)
+    return layer(in_features, token_positions)
 
 
 def run_transformer_lm(

@@ -66,8 +66,8 @@ class RMSNorm(nn.Module):
         self,
         d_model: int,
         eps: float = 1e-5,
-        device=None,
-        dtype=None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         super().__init__()
 
@@ -234,9 +234,12 @@ class CausalMHA(nn.Module):
         self.d_head = d_model // num_heads
 
         # initialize the parameters:
-        self.W_q = Linear(d_model, d_model, device=device, dtype=dtype)
-        self.W_k = Linear(d_model, d_model, device=device, dtype=dtype)
-        self.W_v = Linear(d_model, d_model, device=device, dtype=dtype)
+        # self.W_q = Linear(d_model, d_model, device=device, dtype=dtype)
+        # self.W_k = Linear(d_model, d_model, device=device, dtype=dtype)
+        # self.W_v = Linear(d_model, d_model, device=device, dtype=dtype)
+
+        # combined initialize:
+        self.W_qkv = Linear(d_model, 3 * d_model, device=device, dtype=dtype)
         self.W_o = Linear(d_model, d_model, device=device, dtype=dtype)
 
         self.necklace = RoPE(theta, self.d_head, max_seq_len, device=device)
@@ -247,11 +250,17 @@ class CausalMHA(nn.Module):
 
         seq_len = x.shape[-2]
         # map x into heads:
-        q = einx.id("... seq (n_heads d_head) -> ... n_heads seq d_head", self.W_q(x), d_head=self.d_head)
-        k = einx.id("... seq (n_heads d_head) -> ... n_heads seq d_head", self.W_k(x), d_head=self.d_head)
-        v = einx.id("... seq (n_heads d_head) -> ... n_heads seq d_head", self.W_v(x), d_head=self.d_head)
+        # q = einx.id("... seq (n_heads d_head) -> ... n_heads seq d_head", self.W_q(x), d_head=self.d_head)
+        # k = einx.id("... seq (n_heads d_head) -> ... n_heads seq d_head", self.W_k(x), d_head=self.d_head)
+        # v = einx.id("... seq (n_heads d_head) -> ... n_heads seq d_head", self.W_v(x), d_head=self.d_head)
 
-        # do RoPE at each head:
+        q, k, v = einx.id(
+            "... seq ((1+1+1) n_heads d_head) -> ... n_heads seq d_head, ... n_heads seq d_head, ... n_heads seq d_head",
+            self.W_qkv(x),
+            d_head=self.d_head,
+        )
+
+        # do RoPE at each  head:
         q = self.necklace(q, token_positions)
         k = self.necklace(k, token_positions)
 
@@ -265,3 +274,36 @@ class CausalMHA(nn.Module):
         x_out = einx.id("... n_heads seq d_head -> ... seq (n_heads d_head)", v_out)
 
         return self.W_o(x_out)
+
+
+class Progynova(nn.Module):
+    """
+    "Progynova" is a brand name of estradiol valerate,
+    which is the most accessible source of HRT for transfeminine individuals in mainland China.
+    It is literally a popular trans-former.
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        d_ff: int,
+        max_seq_len: int,
+        theta: float,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        super().__init__()
+
+        self.rms1 = RMSNorm(d_model, device=device, dtype=dtype)
+        self.mha = CausalMHA(d_model, num_heads, max_seq_len, theta, device=device, dtype=dtype)
+
+        self.rms2 = RMSNorm(d_model, device=device, dtype=dtype)
+        self.ffn = SwiGLU(d_model, d_ff, device=device, dtype=dtype)
+
+    def forward(
+        self, x: Float[Tensor, "*batch seq_len d_model"], token_positions: Int[Tensor, "*batch seq_len"]
+    ) -> Float[Tensor, "*batch seq_len d_model"]:
+        x = x + self.mha(self.rms1(x), token_positions)
+        x = x + self.ffn(self.rms2(x))
+        return x
