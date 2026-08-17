@@ -20,6 +20,7 @@ from cs336_basics.operators import (
     RoPE,
     CausalMHA,
     Progynova,
+    transformer_lm,
     scaled_dot_product_attention,
     softmax,
 )
@@ -412,7 +413,31 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    model = transformer_lm(vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta)
+
+    state_dict = {
+        "token_embeddings.weight": weights["token_embeddings.weight"],
+        "ln_final.weight": weights["ln_final.weight"],
+        "lm_head.weight": weights["lm_head.weight"],
+    }
+    for i in range(num_layers):
+        prefix = f"layers.{i}."
+        qkv_proj_weight = einx.id(
+            "d_out d_in, d_out d_in, d_out d_in -> ((1+1+1) d_out) d_in",
+            weights[prefix + "attn.q_proj.weight"],
+            weights[prefix + "attn.k_proj.weight"],
+            weights[prefix + "attn.v_proj.weight"],
+        )
+        state_dict[prefix + "mha.W_qkv.weight"] = qkv_proj_weight
+        state_dict[prefix + "mha.W_o.weight"] = weights[prefix + "attn.output_proj.weight"]
+        state_dict[prefix + "rms1.weight"] = weights[prefix + "ln1.weight"]
+        state_dict[prefix + "rms2.weight"] = weights[prefix + "ln2.weight"]
+        state_dict[prefix + "ffn.w1.weight"] = weights[prefix + "ffn.w1.weight"]
+        state_dict[prefix + "ffn.w2.weight"] = weights[prefix + "ffn.w2.weight"]
+        state_dict[prefix + "ffn.w3.weight"] = weights[prefix + "ffn.w3.weight"]
+
+    model.load_state_dict(state_dict)
+    return model(in_indices)
 
 
 def run_rmsnorm(
