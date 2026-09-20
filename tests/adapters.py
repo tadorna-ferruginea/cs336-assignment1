@@ -24,6 +24,7 @@ from cs336_basics.operators import (
     scaled_dot_product_attention,
     softmax,
 )
+from cs336_basics.training import avg_cross_entropy
 
 
 def run_linear(
@@ -535,8 +536,7 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
-
+    return avg_cross_entropy(inputs, targets)
 
 def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
     """Given a set of parameters, clip their combined gradients to have l2 norm at most max_l2_norm.
