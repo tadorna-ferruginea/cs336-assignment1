@@ -24,7 +24,7 @@ from cs336_basics.operators import (
     scaled_dot_product_attention,
     softmax,
 )
-from cs336_basics.training import avg_cross_entropy
+from cs336_basics.optimizer import AdamW, avg_cross_entropy
 
 
 def run_linear(
@@ -554,7 +554,7 @@ def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return AdamW
 
 
 def run_get_lr_cosine_schedule(
