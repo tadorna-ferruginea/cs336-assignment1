@@ -24,7 +24,7 @@ from cs336_basics.operators import (
     scaled_dot_product_attention,
     softmax,
 )
-from cs336_basics.optimizer import AdamW, avg_cross_entropy
+from cs336_basics.optimizer import AdamW, avg_cross_entropy, cosine_lr_schedule, grad_clipping
 
 
 def run_linear(
@@ -547,7 +547,7 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    grad_clipping(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> Any:
@@ -582,7 +582,13 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    return cosine_lr_schedule(
+        step=it,
+        lr_max=max_learning_rate,
+        lr_min=min_learning_rate,
+        bound1=warmup_iters,
+        bound2=cosine_cycle_iters,
+    )
 
 
 def run_save_checkpoint(
